@@ -58,8 +58,8 @@ def convert_to_kpis(row):
          factor = 2
     else:
          factor = 1
-    time_denumerator = [row['pmraatttadistr{}'.format(i)] * x for i, x in enumerate(multipliers)]
-    time_numerator = [x * factor for x in time_denumerator]
+    time_denumerator = [row['pmraatttadistr{}'.format(i)] for i in range(12)]
+    time_numerator = [x * y * factor for (x, y) in zip(time_denumerator, multipliers)]
     time_advance_avg.append(np.sum(time_numerator) / np.sum(time_denumerator))
 
 
@@ -86,4 +86,4 @@ kpi_df = pd.DataFrame({
     'time_advance_avg': time_advance_avg
 })
 
-kpi_df.to_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1_outer.csv', index=False)
+kpi_df.to_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1_outer2.csv', index=False)

@@ -1,3 +1,17 @@
+Time series clustering:
+1. Distance measure,
+2. Grouping algorithm
+
+https://www.sciencedirect.com/science/article/pii/S1389128623000233#sec3
+First order difference of each time series: Delta yt = yt - yt-1
+The largest u 
+elements of differences sequence are defined as the tail part.
+The tail represents the extreme or unexpected events in a time series.
+
+https://ieeexplore.ieee.org/document/8871152
+https://ieeexplore.ieee.org/document/7811244
+
+
 56 (SOM): Retainablility, HOSR, 95th percentile RSRP, 5th percentile RSRQ, 95th percentile SINR, TP avg, 95th percentile Distance 
 47 (Naive Bayes classifier): RSRP, RSRQ, HOSR, E_RAB_RET, SINR, AVG_TP, 50th percentile DIstance
 https://ieeexplore.ieee.org/document/8871152 (LSTM_AE): RNTI, RB(up&down), MCS(up&down)(modulation and coding scheme)

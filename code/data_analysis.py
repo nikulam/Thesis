@@ -3,19 +3,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 #%%
-df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1_outer.csv')
-cellwise_df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/cellwise_df.csv')
-inner_df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1.csv')
-#Set timestamp index for cellwise_df
-cellwise_df['timestamp'] = pd.to_datetime(cellwise_df['timestamp'])
-cellwise_df.set_index(pd.to_datetime(cellwise_df['timestamp']),inplace=True)
-inner_df['timestamp'] = pd.to_datetime(inner_df['datetime'])
-#Remove Inf and NaN
-#df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
-cellwise_df = cellwise_df[~cellwise_df.isin([np.nan, np.inf, -np.inf]).any(1)]
-
+df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1_outer2.csv')
+#Remove nulls and infs
+df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
 
 #Create time columns
 df['timestamp'] = pd.to_datetime(df['datetime'])
@@ -34,6 +28,7 @@ num_cols = [
     'user_throughput_ul_avg',
     'traffic_volume_data',
     'tp_carrier_aggr',
+    'carrier_aggr_usage',
     'cqi_avg',
     'time_advance_avg'
 ]
@@ -51,7 +46,29 @@ cat_cols = [
 
 #Shorten the ltecell names
 df['ltecell_name'] = df['ltecell_name'].apply(lambda x: x[-5:])
-inner_df['ltecell_name'] = inner_df['ltecell_name'].apply(lambda x: x[-5:])
+# %%
+timestamp = df['timestamp']
+data = df[df['ltecell_name'] == 'N1L18']
+data = df.drop(['timestamp', 'datetime', 'ltecell_name', 'hsr_intra_freq', 'hsr_inter_freq', 'daytime', 'workday', 'freq', 'sector',  'prb_ul_usage_rate_avg', 'user_throughput_ul_avg', 'cell_throughput_ul_avg', 'time_advance_avg'], axis=1).dropna()
+print(len(data.columns))
+# Standardize the data
+scaler = StandardScaler()
+data_scaled = scaler.fit_transform(data)
+
+# Perform PCA on the data
+pca = PCA(n_components=5)
+principal_components = pca.fit_transform(data_scaled)
+
+print(pca.explained_variance_ratio_)
+print(principal_components)
+
+# Plot the data
+plt.scatter(principal_components[:,0], principal_components[:,1])
+plt.xlabel('Timestamp')
+plt.ylabel('1st Principal Component')
+plt.show()
+
+
 
 # %%
 #Create new features
@@ -65,29 +82,39 @@ for name, group in groups:
     print(name, len(group))
 
 # %%
-print(len(df.dropna()))
+for cell in df['ltecell_name'].unique():
+    print(df[df['ltecell_name'] == cell]['user_throughput_dl_avg'].autocorr(2))
 # %%
 #Lineplot
 default_palette = sns.color_palette(palette='colorblind')
-x = 'hour'
-y = 'carrier_aggr_usage'
-cell = 'N1L08'
-plot_df = inner_df[(inner_df['ltecell_name'] == cell)]
-ax = sns.lineplot(data=df, x=x, y=y, hue='ltecell_name', ci=False, estimator='mean', legend=True)
+x = 'timestamp'
+y = 'user_throughput_dl_avg'
+cell = 'N3L21'
+plot_df = df[(df['ltecell_name'] == cell)]
+
+#plt.plot(plot_df[x], plot_df[x])
+#sns.kdeplot(data=df, x='user_throughput_ul_avg', hue='ltecell_name')
+#sns.histplot(data=df, x='user_throughput_ul_avg', hue='ltecell_name')
+sns.histplot(data=df, x='user_throughput_ul_avg', hue='ltecell_name', bins=len(df), 
+             stat="density", element="step", fill=False, cumulative=True, common_norm=False)
+#sns.boxplot(data=df, x='ltecell_name', y='user_throughput_ul_avg')
+#ax = sns.lineplot(color=default_palette[8], data=plot_df[0:168], x=x, y=y, legend=True)
 #ax.axvline(x=pd.to_datetime('2023-01-30 00:00:00'), c='black', linestyle='--')
 plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0)
-plt.title('Average {} by {}'.format(y, x))
+plt.title('One week of {} in cell {}'.format(y, cell))
+plt.xlim(0, 25000)
 # %%
 #Correlation matrix
 #plot_df = df[df['daytime'] == 0].drop(['hour', 'day', 'daytime'], axis=1)
 cell = 'N1L08'
 ho = 'hsr_intra_freq'
-plot_df = df[df['ltecell_name'] == cell]
+#plot_df = df[df['ltecell_name'] == cell]
+plot_df = df.drop(['timestamp', 'datetime', 'ltecell_name', 'hsr_intra_freq', 'hsr_inter_freq', 'cell_throughput_dl_avg', 'cqi_avg', 'tp_carrier_aggr', 'daytime', 'workday', 'freq', 'sector', 'traffic_volume_data'], axis=1)
 #plot_df = df[(df[ho] < 100) & (df['ltecell_name'] == cell) & (df['daytime'] == 0)]
 #plot_df = df[df['ltecell_name'] == cell].drop(['timestamp', 'datetime', 'ltecell_name', 'time_advance_avg', 'traffic_volume_data', 'user_throughput_dl_avg', 'cell_throughput_ul_avg', 'prb_dl_usage_rate_avg'], axis=1)
 #print(plot_df['N1L08_prb_dl_usage_rate_avg'].corr(df['N1L08_user_throughput_dl_avg'].sort_values()))
 sns.heatmap(plot_df.corr(), annot=True, fmt='.1f', cmap=sns.color_palette("viridis", as_cmap=True))
-plt.title('Cell {} correlations before filtering'.format(cell, ho))
+#plt.title('Cell {} correlations before filtering'.format(cell, ho))
 # %%
 plot_data = df.drop([
                      'datetime',

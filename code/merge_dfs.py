@@ -50,7 +50,7 @@ for name, tgroup in tgroups:
         glgroup = glgroups.get_group(name)
        
         #Merge dataframes. Resulting is a dataframe containing all the columns from all dataframes.
-        #Merge is based on datetime, thus records from times that don't appear in all dataframes are dropped.
+
         merged_group = pd.merge(e9group, tgroup, on='pmm_datetime', how='outer', suffixes=('_y', '_y'))
         merged_group = pd.merge(merged_group, hgroup, on='pmm_datetime', how='outer', suffixes=('_y', '_y'))
         merged_group = pd.merge(merged_group, pgroup, on='pmm_datetime', how='outer', suffixes=('_y', '_y'))
