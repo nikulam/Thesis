@@ -9,7 +9,8 @@ from sklearn.preprocessing import StandardScaler
 #%%
 df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1_outer2.csv')
 #Remove nulls and infs
-df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
+#df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
+#df.dropna(inplace=True)
 
 #Create time columns
 df['timestamp'] = pd.to_datetime(df['datetime'])
@@ -85,24 +86,51 @@ for name, group in groups:
 for cell in df['ltecell_name'].unique():
     print(df[df['ltecell_name'] == cell]['user_throughput_dl_avg'].autocorr(2))
 # %%
+for cell in df['ltecell_name'].unique():
+    cell = cell
+    cell_df = df[(df['ltecell_name'] == cell)]
+    print(max(cell_df['user_throughput_dl_avg']))
+    #Use mean and standard deviation to verify and remove outliers
+    threshold = 5
+    outlier_columns = ['user_throughput_dl_avg']
+    for c in outlier_columns:
+        mean1 = np.mean(cell_df[c])
+        std1 = np.std(cell_df[c])
+        outliers = []
+        for n in cell_df[c]:
+                z_score= (n - mean1) / std1 
+                if np.abs(z_score) > threshold:
+                    outliers.append(n)
+
+        for o in outliers:
+            print(cell, o)
+            #data = data[data[c] != o]
+# %%
 #Lineplot
 default_palette = sns.color_palette(palette='colorblind')
-x = 'timestamp'
-y = 'user_throughput_dl_avg'
+x = 'hour'
+y = 'cell_throughput_dl_avg'
 cell = 'N3L21'
 plot_df = df[(df['ltecell_name'] == cell)]
+for c in df['ltecell_name'].unique():
+    print(len(df[df['ltecell_name'] == c]['user_throughput_dl_avg']))
 
 #plt.plot(plot_df[x], plot_df[x])
 #sns.kdeplot(data=df, x='user_throughput_ul_avg', hue='ltecell_name')
 #sns.histplot(data=df, x='user_throughput_ul_avg', hue='ltecell_name')
-sns.histplot(data=df, x='user_throughput_ul_avg', hue='ltecell_name', bins=len(df), 
-             stat="density", element="step", fill=False, cumulative=True, common_norm=False)
-#sns.boxplot(data=df, x='ltecell_name', y='user_throughput_ul_avg')
-#ax = sns.lineplot(color=default_palette[8], data=plot_df[0:168], x=x, y=y, legend=True)
+#sns.histplot(data=df, x='user_throughput_ul_avg', hue='ltecell_name', bins=len(df), 
+#             stat="density", element="step", fill=False, cumulative=True, common_norm=False)
+#sns.boxplot(data=df, x='ltecell_name', y='user_throughput_ul_avg', hue='ltecell_name')
+sns.scatterplot(data=df, x='timestamp', y='traffic_volume_data')
+#sns.lineplot(data=df, x=x, y=y, hue='ltecell_name', estimator=lambda x: len(x), legend=True)
 #ax.axvline(x=pd.to_datetime('2023-01-30 00:00:00'), c='black', linestyle='--')
+#plt.ylabel('number of data points')
+
 plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0)
-plt.title('One week of {} in cell {}'.format(y, cell))
-plt.xlim(0, 25000)
+#plt.title('One week of {} in cell {}'.format(y, cell))
+#plt.xlim(0, 25000)
+
+
 # %%
 #Correlation matrix
 #plot_df = df[df['daytime'] == 0].drop(['hour', 'day', 'daytime'], axis=1)
