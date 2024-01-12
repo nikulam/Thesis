@@ -2,7 +2,7 @@
 import os
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import seaborn as sns
 import matplotlib.pyplot as plt
 from tslearn.barycenters import dtw_barycenter_averaging
@@ -24,6 +24,7 @@ from sklearn.neighbors import NearestNeighbors
 from collections import Counter
 from sklearn.decomposition import PCA
 import random
+import cv2
 
 from keras.models import Sequential
 from keras.layers import LSTM
@@ -32,13 +33,14 @@ from keras.layers import Dropout
 from keras.layers import RepeatVector
 from keras.layers import TimeDistributed
 from keras.utils import plot_model
+import keras
 # %%
 folder_path = 'C:/Users/mirom/Desktop/IST/Thesis/data/New_data/KPIs'
 
 # Loop over files in the folder
 file = os.listdir(folder_path)[2]
-df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1_outer2.csv')
-#df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/New_data/KPIs/{}'.format(file))
+#df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/KPIs1_outer2.csv')
+df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/data/New_data/KPIs/VIANA_SUL_LTE_NVC103B3.csv')
 #Remove nulls and infs
 #df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
 #Create time columns
@@ -83,8 +85,8 @@ num_cols = [
     'traffic_volume_data',
     'tp_carrier_aggr',
     #'carrier_aggr_usage',
-    #'cqi_avg',
-    'time_advance_avg'
+    'cqi_avg',
+    #'time_advance_avg'
 ]
 
 # Helper function to divide based on sectors
@@ -94,7 +96,8 @@ def divide_sectors(cell_name):
 
 # Divide into sectors
 df['sector'] = df['ltecell_name'].apply(lambda x: divide_sectors(x))
-
+# %%
+print(~df.iloc[2732].isnull().values.any())
 
 # %%
 
@@ -102,7 +105,9 @@ w = 'weekday'
 workday = 1 if w == 'weekday' else 0
 sec = 1
 # & (df['workday'] == workday)
-sec_df = df[(df['sector'] == sec)].groupby('timestamp', as_index=False).sum()
+sec_df = df[(df['sector'] == sec)]
+sec_df.dropna(axis=0, inplace=True)
+sec_df = sec_df.groupby('timestamp', as_index=False).sum()
 #sec_df = df[df['sector'] == sec].groupby('timestamp', as_index=False).sum()
 # 1. WEEKLY TIMESERIES
 # Split into weekly timeseries
@@ -122,9 +127,9 @@ cell_df = cell_df[~cell_df['timestamp'].duplicated(keep='first')]
 sec_df = sec_df[~sec_df['timestamp'].duplicated(keep='first')]
 
 mondays_df = sec_df[sec_df['timestamp'].dt.dayofweek == 0]
-first_row = mondays_df.loc[sec_df['traffic_volume_data'] != 0].head(1)
+first_row = mondays_df.loc[~sec_df.isnull().any(axis=1)].head(1)
 first = first_row['timestamp'].values[0]
-last_row = sec_df.loc[sec_df['traffic_volume_data'] != 0].tail(1)
+last_row = sec_df.loc[~sec_df.isnull().any(axis=1)].tail(1)
 last = last_row['timestamp'].values[0]
 #first = pd.to_datetime('2022-09-19 00:00:00')
 #last = pd.to_datetime('2023-03-13 23:00:00')
@@ -132,7 +137,7 @@ last = last_row['timestamp'].values[0]
 #df_no_duplicates.to_csv('C:/Users/mirom/Desktop/IST/Thesis/data/no_duplicates.csv')
 
 print(first, last)
-
+print(first)
 start_date = first
 td = pd.Timedelta(1, 'D')
 end_date = first + td
@@ -159,7 +164,8 @@ while end_date < last:
     sec_ts = sec_ts[num_cols]
     
     # Drop weeks missing more than 10% of hours
-    if sum(~ts['traffic_volume_data'].isna()) >= 24 * 1:
+    if ~ts.isnull().values.any() and ts.shape == (24, 8):
+        print(ts.shape)
         #weekly_tss.append(pd.DataFrame(pca.fit_transform(sc.fit_transform(ts)).reshape(len(ts))))
         weekly_tss.append(ts['traffic_volume_data'])
         #print(pca.explained_variance_ratio_)
@@ -168,8 +174,7 @@ while end_date < last:
         # Append all numeric columns
         full_tss.append(ts)
         #pca_tss.append(pd.DataFrame(pca.fit_transform(ts).reshape(len(ts))))
-
-    if sum(~sec_ts['traffic_volume_data'].isna()) >= 24 * 1:
+    if ~ts.isnull().values.any() and ts.shape == (24, 8):
         #sec_weekly_tss.append(pd.DataFrame(pca.fit_transform(sc.fit_transform(ts)).reshape(len(ts))))
         sec_weekly_tss.append(sec_ts['traffic_volume_data'])
         sec_day_n.append(i)
@@ -184,7 +189,12 @@ X.set_axis(day_n, inplace=True)
 X_sec = pd.concat(sec_weekly_tss, axis=1).T
 X_sec.set_axis(sec_day_n, inplace=True)
 X_full = pd.concat(full_tss)
-print(X.shape)
+
+global_weekend_indices = sorted(list(range(5, X.index[-1], 7)) + list(range(6, X.index[-1], 7)))
+weekday_indices = sorted(list(set(X.index) - set(global_weekend_indices)))
+weekend_indices = sorted(list(set(X.index) - set(weekday_indices)))
+weekday_X = X.loc[weekday_indices]
+weekend_X = X.loc[weekend_indices]
 #X_full.reset_index(inplace=True)
 
 #X.fillna(value=0,inplace=True)
@@ -212,8 +222,8 @@ for i in range(7):
     indices = list(set(sec_day_n) & set(range(i, len(X_sec), 7)))
     sec_daily_avgs.insert(i, X_sec.loc[indices].mean())
 
-weekday_avg = (pd.concat(sec_daily_avgs[0:5], axis=1).mean(axis=1))
-weekend_avg = (pd.concat(sec_daily_avgs[5:7], axis=1).mean(axis=1))
+weekday_avg = weekday_X.mean()
+weekend_avg = weekend_X.mean()
 weekday_avg_denoised = weekday_avg.rolling(3, center=True).mean()
 weekend_avg_denoised = weekend_avg.rolling(3, center=True).mean()
 weekday_avg_denoised.dropna(inplace=True)
@@ -245,9 +255,14 @@ X_change = X.diff(axis=1)
 
 corrs_X = []
 corrs_denoised = []
-for i in range(len(X)):
-    corrs_X.append(X_avg.corr(X.iloc[i]))
-    corrs_denoised.append(denoised_avg.corr(denoised.iloc[i]))
+for i in X.index:
+    if i in weekday_indices:
+        corrs_X.append(weekday_avg.corr(X.loc[i]))
+        corrs_denoised.append(weekday_avg_denoised.corr(denoised.loc[i]))
+    else:
+        corrs_X.append(weekend_avg.corr(X.loc[i]))
+        corrs_denoised.append(weekend_avg_denoised.corr(denoised.loc[i]))
+
 
 # Categorize
 '''
@@ -298,6 +313,19 @@ full_jee = np.array(full_tss)
 
 X_scaled = sc.fit_transform(full_jee.reshape(-1, full_jee.shape[-1])).reshape(full_jee.shape)
 print(X_scaled.shape)
+
+
+print(weekend_X)
+# %%
+print(X_full.shape)
+print(sum(~X_full.isnull()))
+# %%
+weekday_X_scaled = TimeSeriesScalerMeanVariance().fit_transform(weekday_X)
+weekend_X_scaled = TimeSeriesScalerMeanVariance().fit_transform(weekend_X)
+#weekday_X = weekday_X.to_numpy().reshape(weekday_X.shape[0], weekday_X.shape[1], 1)
+#weekend_X = weekend_X.to_numpy().reshape(weekend_X.shape[0], weekend_X.shape[1], 1)
+print(weekday_X_scaled.min().min())
+print(weekend_X.min().min())
 # %%
 X_scaled = TimeSeriesScalerMeanVariance().fit_transform(X)
 denoised_scaled = TimeSeriesScalerMeanVariance().fit_transform(denoised)
@@ -308,7 +336,13 @@ denoised_scaled = TimeSeriesScalerMeanVariance().fit_transform(denoised)
 #X_change = TimeSeriesScalerMeanVariance().fit_transform(X_change)
 X_avg_scaled = TimeSeriesScalerMeanVariance().fit_transform(X_avg.values.reshape(1,-1))
 
+# %%
 
+for i, r in enumerate(range(len(weekday_X_scaled))):
+    if np.isnan(weekday_X_scaled[i]).sum() > 0:
+        print(i)
+
+print(weekday_X_scaled[75])
 # %%
 # Time series clustering
 init_clusters = np.array([weekday_avg_denoised, weekend_avg_denoised]).reshape(2,22,1)
@@ -322,35 +356,117 @@ print(silhouette_score(X, labels))
 
 # %%
 # DBSCAN
-print(X_scaled.shape)
-nbrs = NearestNeighbors(n_neighbors = 5).fit(X_scaled.reshape(164, 24*8))
-# Find the k-neighbors of a point
-neigh_dist, neigh_ind = nbrs.kneighbors(X_scaled.reshape(164, 24*8))
-# sort the neighbor distances (lengths to points) in ascending order
-# axis = 0 represents sort along first axis i.e. sort along row
-sort_neigh_dist = np.sort(neigh_dist, axis = 0)
+labels = []
+for X_scaled in [weekday_X_scaled, weekend_X_scaled]:
 
-k_dist = sort_neigh_dist[:, 4]
-plt.plot(k_dist)
-plt.ylabel("k-NN distance")
-plt.xlabel("Sorted observations (5th NN)")
-plt.show()
+    nbrs = NearestNeighbors(n_neighbors = 5).fit(X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1]))
+    # Find the k-neighbors of a point
+    neigh_dist, neigh_ind = nbrs.kneighbors(X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1]))
+    # sort the neighbor distances (lengths to points) in ascending order
+    # axis = 0 represents sort along first axis i.e. sort along row
+    sort_neigh_dist = np.sort(neigh_dist, axis = 0)
 
-kneedle = KneeLocator(x = range(1, len(neigh_dist)+1), y = k_dist, S = 1.0, 
-                      curve = "concave", direction = "increasing", online=True)
+    k_dist = sort_neigh_dist[:, 4]
 
-# get the estimate of knee point
-knee = kneedle.knee_y
-print(knee)
+    kneedle = KneeLocator(x = range(1, len(neigh_dist)+1), y = k_dist, S = 1.0, 
+                          curve = "concave", direction = "increasing", online=True)
+
+    # get the estimate of knee point
+    #font = {'size': 15}
+    #plt.rc('font', **font)
+    knee = kneedle.knee_y
+    print(knee)
+    plt.plot(k_dist)
+    plt.ylabel("k-NN distance")
+    plt.xlabel("Sorted observations (5th NN)")
+    plt.plot(list(k_dist).index(knee), knee, color='red', marker='o', markersize=10)
+    plt.show()
+
+    # With *2 we got 0 anomalies, with *1 we got 2.
+    clusters = DBSCAN(eps = knee, min_samples=24).fit(X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1]))
+    # get cluster labels
+    print(pd.Series(clusters.labels_).value_counts())
+    labels.append(clusters.labels_)
 
 # %%
-clusters = DBSCAN(eps = knee, min_samples=24).fit(X_scaled.reshape(164, 24*8))
-# get cluster labels
-print(pd.Series(clusters.labels_).value_counts())
-labels = clusters.labels_
+weekday_labels = list(zip(weekday_indices, labels[0]))
+weekend_labels = list(zip(weekend_indices, labels[1]))
+combined_list = sorted(weekday_labels + weekend_labels, key=lambda tuple: tuple[0])
+combined_labels = [n[1] for n in combined_list]
+print((weekday_labels))
+normal_weekdays = np.array([weekday_X[i] for i, n in enumerate(labels[0]) if n == 0])
+normal_weekends = np.array([weekend_X[i] for i, n in enumerate(labels[1]) if n == 0])
+# %%
+print(normal_weekends.shape)
+avg_weekday = np.mean(normal_weekdays, axis=0)
+avg_weekend = np.mean(normal_weekends, axis=0)
+inverse_weekday = avg_weekday[::-1]
+inverse_weekend = avg_weekday[::-1]
+print(inverse_weekend.shape)
+#imputed_weekdays = np.concatenate((normal_weekdays, inverse_weekday.reshape(1,24,1)), axis=0)
+#imputed_weekends = np.concatenate((normal_weekends, inverse_weekend.reshape(1,24,1)), axis=0)
+imputed_weekdays = np.concatenate((normal_weekdays, avg_weekday.reshape(1,24,1)), axis=0)
+imputed_weekends = np.concatenate((normal_weekends, avg_weekend.reshape(1,24,1)), axis=0)
+print(imputed_weekends.shape)
+weekdays_df = pd.DataFrame(imputed_weekdays.reshape(109,24))
+weekends_df = pd.DataFrame(imputed_weekends.reshape(33,24))
+weekdays_df.to_csv('weekdays_df.csv', index=False)
+weekends_df.to_csv('weekends_df.csv', index=False)
+plt.plot(avg_weekday, label='Average weekday')
+plt.plot(inverse_weekday, label='Inverse weekday')
+plt.xlabel('Time (hour)', fontsize=15)
+plt.ylabel('Traffic volume data (scaled)', fontsize=15)
+#plt.legend(fontsize=15)
 
 # %%
-labels = list(labels)
+imputed_weekdays = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/code/weekdays_df.csv').to_numpy()
+imputed_weekends = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/code/weekends_df.csv').to_numpy()
+imputed_weekdays = TimeSeriesScalerMeanVariance().fit_transform(imputed_weekdays)
+imputed_weekends = TimeSeriesScalerMeanVariance().fit_transform(imputed_weekends)
+plt.plot(imputed_weekdays[-1])
+plt.xlabel('Time (hour)', fontsize=15)
+plt.ylabel('Traffic volume data (scaled)', fontsize=15)
+# %%
+# DBSCAN #2
+labels = []
+for X_scaled in [imputed_weekdays, imputed_weekends]:
+
+    nbrs = NearestNeighbors(n_neighbors = 5).fit(X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1]))
+    # Find the k-neighbors of a point
+    neigh_dist, neigh_ind = nbrs.kneighbors(X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1]))
+    # sort the neighbor distances (lengths to points) in ascending order
+    # axis = 0 represents sort along first axis i.e. sort along row
+    sort_neigh_dist = np.sort(neigh_dist, axis = 0)
+
+    k_dist = sort_neigh_dist[:, 4]
+
+    kneedle = KneeLocator(x = range(1, len(neigh_dist)+1), y = k_dist, S = 1.0, 
+                          curve = "concave", direction = "increasing", online=True)
+
+    # get the estimate of knee point
+    #font = {'size': 15}
+    #plt.rc('font', **font)
+    knee = kneedle.knee_y
+    print(knee)
+    plt.plot(k_dist)
+    plt.ylabel("k-NN distance")
+    plt.xlabel("Sorted observations (5th NN)")
+    plt.plot(list(k_dist).index(knee), knee, color='red', marker='o', markersize=10)
+    plt.show()
+
+    # With *2 we got 0 anomalies, with *1 we got 2.
+    clusters = DBSCAN(eps = knee, min_samples=24).fit(X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1]))
+    # get cluster labels
+    print(pd.Series(clusters.labels_).value_counts())
+    labels.append(clusters.labels_)
+
+# %%
+weekday_labels = list(zip(weekday_indices, labels[0]))
+weekend_labels = list(zip(weekend_indices, labels[1]))
+combined_list = sorted(weekday_labels + weekend_labels, key=lambda tuple: tuple[0])
+combined_labels = [n[1] for n in combined_list]
+# %%
+labels = combined_labels.copy()
 
 missing = list(set(range(0, max(day_n))) - set(day_n))
 for m in sorted(missing):
@@ -378,15 +494,44 @@ for i in range(len(X_pad)):
     corrs.append(c)
 
 # %%
-print()
+anoms = []
+for i, l in enumerate(labels):
+    if l == -1:
+        anoms.append(i)
+
+print(anoms)
 # %%
-for i in labels:
-    print(i)
+font = {'family': 'normal',
+            'weight': 'normal',
+            'size': 20}
 
-print(len(labels))
+plt.rc('font', **font)
 
-#X.reset_index(inplace=True)
-#denoised.reset_index(inplace=True)
+fig, ax = plt.subplots(1,1)
+
+ax.plot(X_pad.iloc[0])
+#ax.set_facecolor('yellow')
+plt.xlabel('Time (hour)')
+plt.ylabel('Data traffic volume (MB)')
+#plt.show()
+plt.savefig('C:/Users/mirom/Desktop/IST/Thesis/imgs/normal', bbox_inches='tight')
+
+# %%
+# OpenCV
+print('jee0')
+image1 = cv2.imread('C:/Users/mirom/Desktop/IST/Thesis/imgs/normal.png')
+image2 = cv2.imread('C:/Users/mirom/Desktop/IST/Thesis/imgs/abnormal.png')
+# Resize the images (optional if they are already of the same size)
+#image1 = cv2.resize(image1, (800, 600))
+#image2 = cv2.resize(image2, (800, 600))
+#image3 = cv2.resize(image3, (800, 600))
+print('jee2')
+# Horizontally concatenate the images
+combined_image = cv2.hconcat([image1, image2])
+print('jee3')
+
+# Save the combined image
+cv2.imwrite('C:/Users/mirom/Desktop/IST/Thesis/imgs/anom_sample.png', combined_image)
 # %%
 fig, ax = plt.subplots()
 '''
@@ -394,8 +539,12 @@ for a in scaled_avgs:
     print(a.reshape(-1).shape)
     ax.plot(a.reshape(-1))
 '''
-ax.plot(weekday_avgs[0], color=sns.color_palette()[0])
-ax.plot(weekend_avgs[0], color=sns.color_palette()[0], linestyle='--')
+
+#
+weekday_avgs = df[(df['workday'] == 1) & (df['sector'] == sec)].groupby('timestamp', as_index=False).sum()['traffic_volume_data']
+weekend_avgs = df[(df['workday'] == 0) & (df['sector'] == sec)].groupby('timestamp', as_index=False).sum()['traffic_volume_data']
+ax.plot(weekday_avg, color=sns.color_palette()[0])
+ax.plot(weekend_avg, color=sns.color_palette()[0], linestyle='--')
 
 line_a = Line2D([], [], color=sns.color_palette()[0], label='Weekday', linestyle='-')
 line_b = Line2D([], [], color=sns.color_palette()[0], label='Weekend', linestyle='--')
@@ -406,6 +555,7 @@ fig.legend(handles=[line_a, line_b], ncol=3, loc='upper center', fontsize=14)
 ax.set_xlabel('Time (hour)', fontsize=14)
 ax.set_ylabel('Average number of users', fontsize=14)
 
+plt.show()
 #x.set_xticks(range(11, 168, 12)) 
 #ax.set_xticklabels(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
 #ax.set_xticklabels([12, 24,12, 24,12, 24,12, 24,12, 24,12, 24,12, 24,])
@@ -453,8 +603,8 @@ ax[y-2, x].set_title('Average weekend sector')
 
 
 for i in range(7):
-    ax[y-2, i].plot(daily_avgs[i], color='green')
-    ax[y-2, i].set_title('Average {}'.format(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i]))
+    ax[y-1, i].plot(daily_avgs[i], color='green')
+    ax[y-1, i].set_title('Average {}'.format(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i]))
 
 '''
 for i in range(25):
@@ -468,9 +618,8 @@ for l in range(len(labels)):
 
 plt.savefig('C:/Users/mirom/Desktop/IST/Thesis/imgs/New_data/{}_sec{}.png'.format(file[:-4], sec))
 plt.show()
-
 # %%
-
+print(combined_labels)
 # %%
 random.seed(42)
 
@@ -485,7 +634,7 @@ full_test = []
 
 test = pd.concat(full_tss).interpolate()
 
-for i, l in enumerate(clusters.labels_):
+for i, l in enumerate(combined_labels):
     if l == 0:
         '''
         if len(full_tss[i]) < 24:
@@ -496,10 +645,10 @@ for i, l in enumerate(clusters.labels_):
             full_tss[i].sort_index(inplace=True)
         '''
 
-        #full_normal.append(full_tss[i].drop(['traffic_volume_data'], axis=1))
+        full_normal.append(full_tss[i].drop(['traffic_volume_data'], axis=1))
         #full_normal.append(full_tss[i]['traffic_volume_data'])
         #full_normal.append(test.iloc[i*24 : (i+1)*24].drop(['traffic_volume_data'], axis=1))
-        full_normal.append(full_tss[i])
+        #full_normal.append(full_tss[i])
         #if i in weekend_indices:
             #full_normal_weekend.append(full_tss[i].drop(['traffic_volume_data'], axis=1))
             #full_normal_weekend.append(full_tss[i])
@@ -517,10 +666,10 @@ for i, l in enumerate(clusters.labels_):
             full_tss[i].sort_index(inplace=True)
         '''
 
-        #full_anom.append(full_tss[i].drop(['traffic_volume_data'], axis=1))
+        full_anom.append(full_tss[i].drop(['traffic_volume_data'], axis=1))
         #full_anom.append(full_tss[i]['traffic_volume_data'])
         #full_anom.append(test.iloc[i*24 : (i+1)*24].drop(['traffic_volume_data'], axis=1))
-        full_anom.append(full_tss[i])
+        #full_anom.append(full_tss[i])
         
         #if i in weekend_indices:
             #full_anom_weekend.append(full_tss[i].drop(['traffic_volume_data'], axis=1))
@@ -596,8 +745,9 @@ full_test_weekend_scaled = sc.transform(full_test_weekend)
 full_anom_weekend_scaled = sc.transform(full_anom_weekend)
 '''
 # %%
-print(X_full.index)
-
+for i in range(7):
+    print(np.max(full_train_scaled[:,:,i]))
+#plt.plot(full_train_scaled[0,:,6])
 # %%
 # Using only TVD
 normal = []
@@ -658,21 +808,29 @@ X_anom = window(anom_scaled, n_lags)
 X_full_train = window(full_train_scaled, n_lags)
 X_full_test = window(full_test_scaled, n_lags)
 X_full_anom = window(full_anom_scaled, n_lags)
-
 # %%
-print(full_train_scaled.shape)
+normal_df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/code/normal_df.csv')
+normal_data = normal_df
+train_array = normal_data.to_numpy().reshape(95,24,7)[:80]
+
+full_train_scaled = train_array
+# %%
+for i in range(7):
+    print(full_train_scaled[:,:,i].min())
+# %%
+print(full_train_scaled.shape, full_test_scaled.shape, full_anom_scaled.shape)
+
 model = Sequential()
 # Encoder
-#model.add(LSTM(128, activation='relu', input_shape=(full_train_scaled.shape[1], full_train_scaled.shape[2]), return_sequences=True))
+#model.add(LSTM(256, activation='relu', input_shape=(full_train_scaled.shape[1], full_train_scaled.shape[2]), return_sequences=True))
 model.add(LSTM(64, activation='relu', input_shape=(full_train_scaled.shape[1], full_train_scaled.shape[2])))
 #model.add(LSTM(64, activation='relu', input_shape=(24,1)))
 
 #model.add(RepeatVector(X_train.shape[1]))
 model.add(RepeatVector(full_train_scaled.shape[1]))
-
 # Decoder
 model.add(LSTM(64, activation='relu', return_sequences=True))
-#model.add(LSTM(128, activation='relu', return_sequences=True))
+#model.add(LSTM(256, activation='relu', return_sequences=True))
 
 model.add(TimeDistributed(Dense(full_train_scaled.shape[2])))
 #model.add(TimeDistributed(Dense(1)))
@@ -743,6 +901,101 @@ for i in range(len(full_anom_scaled)):
         else:
             print('jee: ', i)
 
+
+
+# %%
+# Obtain set of normal days
+normal_set = []
+normal_index = []
+original = np.array(full_normal)
+original_scaled = sc.fit_transform(original.reshape(-1, original.shape[-1])).reshape(original.shape)
+yhat = model.predict(original_scaled, verbose=0)
+for i in range(len(yhat)):
+    mse = np.mean(np.square(yhat[i] - original_scaled[i]))
+    if mse < 0.5:
+        normal_index.append(i)
+        normal_set.append(original_scaled[i])
+    elif mse > 8:
+        print(i)
+
+plt.plot(full_train_scaled[21,:,6], label='Original')
+plt.plot(yhat[21,:,6], label='Reconstructed')
+#plt.plot(normal_set[0])
+plt.xlabel('Time (hour)', fontsize=15)
+plt.ylabel('Cqi average (scaled)', fontsize=15)
+plt.legend(fontsize=15)
+print(len(normal_set))
+normal_df = pd.DataFrame(np.array(normal_set).reshape(len(normal_set)*24,7))
+normal_df.to_csv('normal_df.csv', index=False)
+
+# %%
+normal_df = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/code/normal_df.csv')
+normal_data = normal_df.copy()
+n_days = int(normal_data.shape[0] / 24)
+train_array = normal_data.to_numpy().reshape(n_days,24,7)[:60]
+test_array = normal_data.to_numpy().reshape(n_days,24,7)[60:]
+
+avgs = []
+inversed = []
+for n in range(7):
+    avg_day = np.mean(test_array[:,:,n], axis=0)
+    avgs.append(avg_day)
+    inversed.append(avg_day[::-1])
+
+imputed_array = np.concatenate((test_array, np.array(avgs).T.reshape(1,24,7)), axis=0)
+imputed_array = np.concatenate((imputed_array, np.array(inversed).T.reshape(1,24,7)), axis=0)
+print(imputed_array.shape)
+plt.plot(imputed_array[-1,:,0])
+plt.xlabel('Time (hour)', fontsize=15)
+plt.ylabel('Number of users (scaled)', fontsize=15)
+n_test_days = int(imputed_array.shape[0])
+pd.DataFrame(imputed_array.reshape(n_test_days*24, 7)).to_csv('imputed_df.csv', index=False)
+
+# %%
+imputed_data = pd.read_csv('C:/Users/mirom/Desktop/IST/Thesis/code/imputed_df.csv')
+imputed = imputed_data.to_numpy().reshape(n_test_days,24,7)
+plt.plot(imputed[-1,:,0])
+print(train_array.shape)
+print(np.min(original[:,:,0]))
+print(np.min(train_array[:,:,0]))
+print(np.std(full_train))
+print(np.mean(full_train))
+print(np.std(original))
+# %%
+
+
+mses = []
+yhat = model.predict(imputed)
+print(yhat.shape)
+for i in range(len(imputed)):
+    mse = np.mean(np.square(yhat[i] - imputed[i]))
+    mses.append(mse)
+
+mses_1 = []
+yhat_1 = model.predict(train_array)
+for i in range(len(train_array)):
+    #mse = np.mean(np.square(yhat[i].flatten() - X_train[i]))
+    mse = np.mean(np.square(yhat_1[i] - train_array[i]))
+    mses_1.append(mse)
+
+print(len(mses))
+print('max test mse: ', np.max(mses))
+print('max train mse: ', np.max(mses_1))
+print('index of max: ', mses.index(np.max(mses)))
+print('mse of second largest: ', np.partition(mses, -1)[-2])
+print('mse of last: ', mses[-1])
+plt.plot(yhat[-1])
+plt.clf()
+sns.histplot(mses_1, label='Train')
+sns.histplot(mses, label='Test')
+plt.legend(fontsize=15)
+plt.xlabel('MSE', fontsize=15)
+plt.ylabel('Count', fontsize=15)
+# %%
+plt.plot(yhat[-1,:,0])
+plt.xlabel('Time (hour)', fontsize=15)
+plt.ylabel('Number of users (scaled)', fontsize=15)
+
 # %%
 p = 100
 print('Train: ', np.percentile(mses_train, p))
@@ -763,20 +1016,20 @@ sns.histplot(ds, label=ds_name)
 plt.title('Sec {} reconstruction error distributions in\n{}'.format(sec, file[:-4]))
 plt.xlabel('MSE')
 plt.legend()
-plt.savefig('C:/Users/mirom/Desktop/IST/Thesis/imgs/New_data/{}_sec{}_recon_hist.png'.format(file[:-4], sec))
+#plt.savefig('C:/Users/mirom/Desktop/IST/Thesis/imgs/New_data/{}_sec{}_recon_hist.png'.format(file[:-4], sec))
 plt.plot()
 
 # %%
-errs = np.square(yhat - full_anom_scaled)
+errs = np.square(yhat - full_train_scaled)
 print(errs.shape)
 #print(np.mean(np.square(yhat - full_anom_scaled)))
-kpi_df = pd.DataFrame(full_anom_scaled[:,:,0])
+kpi_df = pd.DataFrame(yhat[:,:,0])
 kpi_df = kpi_df.stack().reset_index()
 kpi_df.columns = ['Day', 'Hour', 'KPI']
 print(kpi_df)
 sns.lineplot(data=kpi_df, x='Hour', y='KPI', hue='Day', palette='Set1')
 plt.ylabel('')
-plt.title('Sec {} anom days Users Average original scaled'.format(sec))
+plt.title('Sec {} anom days HSR inter freq reconstructed'.format(sec))
 # %%
 num_cols = [
     'users_avg',
@@ -791,7 +1044,7 @@ num_cols = [
     #'traffic_volume_data',
     'tp_carrier_aggr',
     #'carrier_aggr_usage',
-    #'cqi_avg',
+    'cqi_avg',
     #'time_advance_avg'
 ]
 
