@@ -1,5 +1,0 @@
-,Cell,Features,Clusters,prb_dl_usage_rate_avg,user_throughput_dl_avg,cqi_avg,time_advance_avg,daytime
-0,CEIRA_MCO001N1L08,"cqi_avg, daytime, prb_dl_usage_rate_avg, time_advance_avg, user_throughput_dl_avg",0.0,29.74040988943176,14848.158508542678,8.890590414421029,2.0,0.0
-1,CEIRA_MCO001N1L08,"cqi_avg, daytime, prb_dl_usage_rate_avg, time_advance_avg, user_throughput_dl_avg",1.0,55.036086956636794,9407.118589189542,8.325851084648708,2.0,1.0
-2,CEIRA_MCO001N1L08,"cqi_avg, daytime, prb_dl_usage_rate_avg, time_advance_avg, user_throughput_dl_avg",-1.0,51.36249,30221.417065421894,8.918074221782366,2.0,0.4
-3,,,,46.66816314117756,11238.924617428303,8.513481829868242,2.0,0.6684713375796179
