@@ -1,3 +1,3 @@
-The code folder contains a bunch of different approaches not providing adequate results.
+model.py contains an AD-RCA model combining DBSCAN and LSTM AE
 
-model.py contains the most promising solutions combining DBSCAN and LSTM AE and thus is the final model.
+The remaining .py-files are used for data preparation
