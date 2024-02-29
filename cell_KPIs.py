@@ -10,7 +10,7 @@ def nullif(x):
     else:
         return x
 
-folder_path = 'C:/Users/mirom/Desktop/IST/Thesis/data/New_data/merged_outer'
+folder_path = "your_file_path"
 
 # Loop over files in the folder
 for filename in os.listdir(folder_path):
