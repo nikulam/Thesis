@@ -18,7 +18,7 @@ from keras.layers import TimeDistributed
 
 # %%
 # Path to the folder containing a csv-file for each BS
-folder_path = 'C:/Users/mirom/Desktop/IST/Thesis/data/New_data/KPIs'
+folder_path = 'your_folder_path'
 # Ref KPI is the one used for DBSCAN clustering
 ref_kpi = 'traffic_volume_data'
 
